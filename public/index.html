@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Email Sender</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+        body {
+            background-color: #f4f6f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .card {
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 20px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: #666;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            border-color: #0070f3;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #0051a2;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Kirim Keluhan WhatsApp</h2>
+        <form id="sendForm">
+            <div class="input-group">
+                <label for="phone">Nomor Telepon:</label>
+                <input type="text" id="phone" placeholder="Contoh: 6282131909878" required>
+            </div>
+            <button type="submit" id="submitBtn">Kirim</button>
+        </form>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('sendForm');
+        const phoneInput = document.getElementById('phone');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusDiv = document.getElementById('status');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const phone = phoneInput.value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Mengirim...';
+            statusDiv.className = '';
+            statusDiv.textContent = 'Menghubungkan ke server...';
+
+            try {
+                const response = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    statusDiv.className = 'success';
+                    statusDiv.textContent = `Berhasil! Email terkirim untuk nomor ${result.phone}`;
+                    phoneInput.value = '';
+                } else {
+                    throw new Error(result.message || 'Gagal mengirim email.');
+                }
+            } catch (error) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = `Error: ${error.message}`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Kirim';
+            }
+        });
+    </script>
+</body>
+</html>
