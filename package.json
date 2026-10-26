@@ -1,0 +1,12 @@
+{
+  "name": "whatsapp-email-sender",
+  "version": "1.0.0",
+  "description": "Web app for sending WhatsApp support emails",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.13"
+  }
+}
