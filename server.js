@@ -3,17 +3,22 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 
-// Fungsi untuk membaca kredensial dari file eksternal
-const getCredentials = () => {
+// Fungsi untuk membaca daftar kredensial dari file eksternal
+const getCredentialsList = () => {
     try {
         const emailPath = path.join(__dirname, 'email.txt');
         const passPath = path.join(__dirname, 'pass.txt');
         
-        const email = fs.readFileSync(emailPath, 'utf8').trim();
-        const pass = fs.readFileSync(passPath, 'utf8').trim();
-        return { email, pass };
+        const emails = fs.readFileSync(emailPath, 'utf8').split(/\r?\n/).map(e => e.trim()).filter(Boolean);
+        const passes = fs.readFileSync(passPath, 'utf8').split(/\r?\n/).map(p => p.trim()).filter(Boolean);
+        
+        let credentials = [];
+        for (let i = 0; i < Math.min(emails.length, passes.length); i++) {
+            credentials.push({ email: emails[i], pass: passes[i] });
+        }
+        return credentials;
     } catch (error) {
-        return { email: '', pass: '' };
+        return [];
     }
 };
 
@@ -29,9 +34,8 @@ const server = http.createServer(async (req, res) => {
                 const data = JSON.parse(body);
                 const rawInput = data.phone || '';
 
-                // Memecah input berdasarkan baris baru (\n)
+                // Memecah input nomor berdasarkan baris baru
                 const lines = rawInput.split(/\r?\n/);
-                
                 let processedPhones = [];
                 for (let line of lines) {
                     let cleaned = line.replace(/[^0-9+]/g, '');
@@ -43,7 +47,7 @@ const server = http.createServer(async (req, res) => {
                     }
                 }
 
-                // Membatasi maksimal 5 nomor (sehingga total maksimal 5 email)
+                // Membatasi maksimal 5 nomor
                 if (processedPhones.length > 5) {
                     processedPhones = processedPhones.slice(0, 5);
                 }
@@ -54,29 +58,20 @@ const server = http.createServer(async (req, res) => {
                     return;
                 }
 
-                const { email: GMAIL_USER, pass: GMAIL_APP_PASSWORD } = getCredentials();
-                if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-                    throw new Error('Kredensial di email.txt atau pass.txt belum diatur dengan benar.');
+                const credentialsList = getCredentialsList();
+                if (credentialsList.length === 0) {
+                    throw new Error('File email.txt atau pass.txt kosong / belum diatur dengan benar.');
                 }
 
-                // Konfigurasi transporter Nodemailer
-                const transporter = nodemailer.createTransport({
-                    host: 'smtp.gmail.com',
-                    port: 465,
-                    secure: true,
-                    auth: {
-                        user: GMAIL_USER,
-                        pass: GMAIL_APP_PASSWORD
-                    }
-                });
-
-                await transporter.verify();
-
                 let sentCount = 0;
-                let sentPhones = [];
+                let sentDetails = [];
 
-                // Mengirim tepat 1 email untuk masing-masing nomor (maksimal 5 nomor / 5 email)
-                for (let phone of processedPhones) {
+                // Mengirim email: masing-masing nomor menggunakan akun email yang berbeda secara berurutan
+                for (let i = 0; i < processedPhones.length; i++) {
+                    const phone = processedPhones[i];
+                    // Mengambil akun berdasarkan indeks (jika nomor > jumlah akun, akan berputar kembali ke akun pertama menggunakan % length)
+                    const cred = credentialsList[i % credentialsList.length];
+
                     const arabicText = `السلام عليكم ورحمة الله وبركاته
 
 أود أن أستعرض المشاكل التي [AkunSuki] اسمي أواجهها
@@ -87,24 +82,36 @@ ${phone}
 
 السلام عليكم ورحمة الله وبركاته، شكراً لكم.`;
 
+                    const transporter = nodemailer.createTransport({
+                        host: 'smtp.gmail.com',
+                        port: 465,
+                        secure: true,
+                        auth: {
+                            user: cred.email,
+                            pass: cred.pass
+                        }
+                    });
+
+                    await transporter.verify();
+
                     const mailOptions = {
-                        from: GMAIL_USER,
-                        to: 'support@support.whatsapp.com',
+                        from: cred.email,
+                        to: 'android@support.whatsapp.com',
                         subject: 'Login Not Available',
                         text: arabicText
                     };
 
                     await transporter.sendMail(mailOptions);
                     sentCount++;
-                    sentPhones.push(phone);
+                    sentDetails.push(`Nomor ${phone} dikirim via ${cred.email}`);
                 }
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ 
                     success: true, 
-                    message: `Berhasil mengirim ${sentCount} email (masing-masing 1 email per nomor).`,
+                    message: `Berhasil mengirim ${sentCount} email menggunakan akun berbeda.`,
                     sentCount: sentCount,
-                    phones: sentPhones 
+                    details: sentDetails 
                 }));
             } catch (error) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -115,24 +122,13 @@ ${phone}
     }
 
     // Melayani file statis dari folder 'public'
-    let filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url);
-    let extname = path.extname(filePath);
-    let contentType = 'text/html';
-
-    switch (extname) {
-        case '.js': contentType = 'text/javascript'; break;
-        case '.css': contentType = 'text/css'; break;
-        case '.json': contentType = 'application/json'; break;
-    }
-
+    let filePath = path.join(__dirname, 'public', 'index.html');
     fs.readFile(filePath, (err, content) => {
         if (err) {
-            fs.readFile(path.join(__dirname, 'public', 'index.html'), (err2, content2) => {
-                res.writeHead(200, { 'Content-Type': 'text/html' });
-                res.end(content2, 'utf8');
-            });
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('404 Not Found');
         } else {
-            res.writeHead(200, { 'Content-Type': contentType });
+            res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(content, 'utf8');
         }
     });
